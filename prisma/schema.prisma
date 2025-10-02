@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Usuario {
+  id        Int       @id @default(autoincrement())
+  nombre    String
+  correo    String    @unique
+  password  String
+  rol       Rol       @default(FUNCIONARIO)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  // Relaciones
+  documentos   Documento[]
+  comunicados  Comunicado[]
+}
+
+model Documento {
+  id        Int      @id @default(autoincrement())
+  titulo    String
+  url       String   // ruta o enlace al documento en storage
+  creador   Usuario  @relation(fields: [creadorId], references: [id])
+  creadorId Int
+  createdAt DateTime @default(now())
+}
+
+model Comunicado {
+  id        Int      @id @default(autoincrement())
+  titulo    String
+  contenido String
+  autor     Usuario  @relation(fields: [autorId], references: [id])
+  autorId   Int
+  createdAt DateTime @default(now())
+}
+
+enum Rol {
+  ADMIN
+  SUBDIRECCION
+  FUNCIONARIO
+}
