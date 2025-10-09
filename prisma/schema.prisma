@@ -7,40 +7,155 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/**
+ * Modelo Usuario (antes: Usuario)
+ * - incluimos rut, telefono, cargo y la relación con su jefe directo
+ * - rol ampliado (ADMIN, SUBDIRECCION, DIRECCION, JEFE, FUNCIONARIO)
+ */
 model Usuario {
-  id        Int       @id @default(autoincrement())
-  nombre    String
-  correo    String    @unique
-  password  String
-  rol       Rol       @default(FUNCIONARIO)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  // Relaciones
-  documentos   Documento[]
-  comunicados  Comunicado[]
+  id                 Int            @id @default(autoincrement())
+  nombre             String
+  correo             String         @unique
+  password           String
+  rol                Rol            @default(FUNCIONARIO)
+  rut                String         @unique
+  telefono           String?
+  cargo              String?
+  jefeId             Int?
+  jefe               Usuario?       @relation("JefeSubordinados", fields: [jefeId], references: [id])
+  subordinados       Usuario[]      @relation("JefeSubordinados")
+  documentos         Documento[]
+  comunicados        Comunicado[]
+  solicitudes        Solicitud[]
+  licencias          Licencia[]
+  notificaciones     Notificacion[]
+  jefeAprobadas      Solicitud[]    @relation("JefeAprob")
+  direccionAprobadas Solicitud[]    @relation("DireccionAprob")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 }
 
+/**
+ * Documentos: repositorio de archivos
+ * - url: enlace en storage (Supabase Storage / S3)
+ */
 model Documento {
-  id        Int      @id @default(autoincrement())
-  titulo    String
-  url       String   // ruta o enlace al documento en storage
-  creador   Usuario  @relation(fields: [creadorId], references: [id])
-  creadorId Int
-  createdAt DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  titulo      String
+  url         String
+  descripcion String?
+  creadorId   Int
+  creador     Usuario  @relation(fields: [creadorId], references: [id])
+  createdAt   DateTime @default(now())
 }
 
+/**
+ * Comunicados internos
+ */
 model Comunicado {
   id        Int      @id @default(autoincrement())
   titulo    String
   contenido String
-  autor     Usuario  @relation(fields: [autorId], references: [id])
   autorId   Int
+  autor     Usuario  @relation(fields: [autorId], references: [id])
   createdAt DateTime @default(now())
 }
 
+/**
+ * Solicitud: vacaciones o días administrativos
+ * - flujo de aprobación: pendiente -> aprobado/rechazado
+ * - se registran aprobador por jefatura y aprobador por dirección con timestamps
+ * - pdfUrl: link al PDF de resolución (cuando corresponda)
+ */
+model Solicitud {
+  id            Int             @id @default(autoincrement())
+  tipo          SolicitudTipo
+  motivo        String?
+  fechaInicio   DateTime
+  fechaFin      DateTime
+  solicitanteId Int
+  solicitante   Usuario         @relation(fields: [solicitanteId], references: [id])
+  estado        SolicitudEstado @default(PENDIENTE)
+
+  // aprobación por jefatura
+  jefeAprobadorId Int?
+  jefeAprobador   Usuario?  @relation("JefeAprob", fields: [jefeAprobadorId], references: [id])
+  jefeAprobadoAt  DateTime?
+
+  // aprobación por dirección
+  direccionAprobadorId Int?
+  direccionAprobador   Usuario?  @relation("DireccionAprob", fields: [direccionAprobadorId], references: [id])
+  direccionAprobadoAt  DateTime?
+
+  pdfUrl        String? // link al PDF generado al aprobar
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  @@index([solicitanteId])
+  @@index([estado])
+}
+
+/**
+ * Licencia: registro de licencias médicas (foto/archivo, fechas y funcionario)
+ */
+model Licencia {
+  id            Int            @id @default(autoincrement())
+  funcionarioId Int
+  funcionario   Usuario        @relation(fields: [funcionarioId], references: [id])
+  fechaInicio   DateTime
+  fechaFin      DateTime
+  archivoUrl    String? // link a la foto/pdf en storage
+  observacion   String?
+  estado        LicenciaEstado @default(REGISTRADA)
+  creadoEn      DateTime       @default(now())
+  actualizadoEn DateTime       @updatedAt
+
+  @@index([funcionarioId])
+}
+
+/**
+ * Notificaciones (registro interno para trazabilidad o envío)
+ */
+model Notificacion {
+  id        Int              @id @default(autoincrement())
+  tipo      NotificacionTipo
+  mensaje   String
+  usuarioId Int?
+  usuario   Usuario?         @relation(fields: [usuarioId], references: [id])
+  enviado   Boolean          @default(false)
+  creadoAt  DateTime         @default(now())
+}
+
+/**
+ * ENUMS
+ */
 enum Rol {
   ADMIN
   SUBDIRECCION
+  DIRECCION
+  JEFE
   FUNCIONARIO
+}
+
+enum SolicitudTipo {
+  VACACIONES
+  ADMINISTRATIVO
+}
+
+enum SolicitudEstado {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  CANCELADO
+}
+
+enum LicenciaEstado {
+  REGISTRADA
+  PROCESADA
+}
+
+enum NotificacionTipo {
+  SOLICITUD_NUEVA
+  SOLICITUD_APROBADA
+  SOLICITUD_RECHAZADA
 }
