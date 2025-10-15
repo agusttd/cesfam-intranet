@@ -159,3 +159,16 @@ enum NotificacionTipo {
   SOLICITUD_APROBADA
   SOLICITUD_RECHAZADA
 }
+
+/**
+ * Calendario: Eventos y Actividades Institucionales
+ */
+model Evento {
+  id          Int      @id @default(autoincrement())
+  titulo      String
+  descripcion String?
+  fechaInicio DateTime // Fecha y hora de inicio del evento
+  fechaFin    DateTime? // Opcional: Fecha y hora de fin
+  esFeriado   Boolean  @default(false) // Indica si es un feriado
+  creadoEn    DateTime @default(now())
+}

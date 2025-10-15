@@ -36,3 +36,13 @@ export interface Solicitud {
 
     creadoEn: string;
 }
+
+export interface Evento {
+    id: number;
+    titulo: string;
+    descripcion: string | null;
+    fechaInicio: string; // Se usará string ISO
+    fechaFin: string | null;
+    esFeriado: boolean;
+    creadoEn: string;
+}
