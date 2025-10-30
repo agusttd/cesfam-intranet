@@ -21,6 +21,7 @@ model Usuario {
   rut                String         @unique
   telefono           String?
   cargo              String?
+  activo             Boolean        @default(true)
   jefeId             Int?
   jefe               Usuario?       @relation("JefeSubordinados", fields: [jefeId], references: [id])
   subordinados       Usuario[]      @relation("JefeSubordinados")

@@ -72,30 +72,28 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-// DELETE: Eliminar usuario (Solo Admin/Dirección)
+// DELETE: Desactivar usuario (Soft Delete)
 export async function DELETE(req: Request, { params }: { params: { id: string } }) {
   try {
     const user = await getUserFromToken(req);
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    
-    if (!checkAdminAccess(user)) {
-      return NextResponse.json({ error: "Acceso denegado. Se requiere rol de Administración/Dirección." }, { status: 403 });
+    if (!user || !["ADMIN", "DIRECCION"].includes(user.rol)) {
+      return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
     }
 
     const usuarioId = parseInt(params.id);
-
-    // Impedir que un usuario se elimine a sí mismo (medida de seguridad)
     if (user.id === usuarioId) {
         return NextResponse.json({ error: "No puedes eliminar tu propia cuenta mientras estás logueado." }, { status: 403 });
     }
 
-    await prisma.usuario.delete({
+    // Cambiar a update para soft delete
+    await prisma.usuario.update({
       where: { id: usuarioId },
+      data: { activo: false }, 
     });
 
-    return NextResponse.json({ message: "Usuario eliminado correctamente" });
+    return NextResponse.json({ message: "Usuario desactivado correctamente" });
   } catch (error) {
-    console.error("Error eliminando usuario:", error);
+    console.error("Error desactivando usuario:", error);
     return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
   }
 }

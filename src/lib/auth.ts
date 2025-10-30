@@ -1,4 +1,5 @@
 import { Role } from './constants';
+import jwt from "jsonwebtoken";
 
 const TOKEN_KEY = 'cesfam_jwt';
 const ROL_KEY = 'cesfam_rol';
@@ -18,6 +19,18 @@ export const getToken = (): string | null => {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem(TOKEN_KEY);
 };
+
+export async function getUserFromToken(req: Request) {
+  const auth = req.headers.get("authorization");
+  if (!auth) return null;
+  const token = auth.split(" ")[1];
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!);
+    return decoded as { id: number; rol: string };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Obtiene el rol del usuario autenticado.

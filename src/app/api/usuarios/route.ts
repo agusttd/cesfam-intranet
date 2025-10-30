@@ -23,37 +23,35 @@ function checkAdminAccess(user: { rol: string }) {
   return user.rol === "ADMIN" || user.rol === "DIRECCION";
 }
 
-// GET: Listar todos los usuarios (Solo Admin/Dirección)
+// GET: Listar todos los usuarios ACTIVO (Solo Admin/Dirección/Subdirección)
 export async function GET(req: Request) {
-  try {
-    const user = await getUserFromToken(req);
-    if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    
-    if (!checkAdminAccess(user)) {
-      return NextResponse.json({ error: "Acceso denegado. Se requiere rol de Administración/Dirección." }, { status: 403 });
+    try {
+        const user = await getUserFromToken(req);
+        if (!user || !["ADMIN", "DIRECCION", "SUBDIRECCION"].includes(user.rol)) {
+            return NextResponse.json({ error: "Acceso denegado" }, { status: 403 });
+        }
+
+        const usuarios = await prisma.usuario.findMany({
+            where: { activo: true }, // ESTO ES EL FILTRO POR USUARIOS ACTIVOS
+            select: {
+                id: true,
+                nombre: true,
+                correo: true,
+                rol: true,
+                rut: true,
+                telefono: true,
+                cargo: true,
+                jefeId: true,
+                activo: true, // Incluimos 'activo' para que sepas su estado, aunque siempre será true
+            },
+            orderBy: { nombre: 'asc' },
+        });
+
+        return NextResponse.json(usuarios);
+    } catch (error) {
+        console.error("Error listando usuarios:", error);
+        return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
     }
-
-    const usuarios = await prisma.usuario.findMany({
-      // Excluimos la contraseña por seguridad
-      select: {
-        id: true,
-        nombre: true,
-        correo: true,
-        rol: true,
-        rut: true,
-        telefono: true,
-        cargo: true,
-        jefeId: true,
-        createdAt: true,
-      },
-      orderBy: { nombre: "asc" },
-    });
-
-    return NextResponse.json(usuarios);
-  } catch (error) {
-    console.error("Error obteniendo usuarios:", error);
-    return NextResponse.json({ error: "Error interno del servidor." }, { status: 500 });
-  }
 }
 
 // POST: Crear nuevo usuario (Solo Admin/Dirección)
