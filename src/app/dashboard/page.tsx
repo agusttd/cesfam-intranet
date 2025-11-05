@@ -1,4 +1,4 @@
-'use client'; // <-- Convertimos la página a Client Component
+'use client'; // <-- Mantenemos Client Component
 
 import Link from "next/link";
 import React, { useState, useEffect } from 'react';
@@ -9,9 +9,8 @@ import { Role, API_URL } from "@/lib/constants";
 import { getRol, getToken } from '@/lib/auth'; // Usamos localStorage
 import { SolicitudCard, ComunicadoCard, EventoCard } from "@/components/DashboardCards";
 
-// --- Interfaces de Datos (Se mantienen igual) ---
+// --- Interfaces de Datos ---
 interface UsuarioDashboard { id: number; rol: string; nombre: string; }
-// Nota: Usamos 'string' para fechas porque JSON no maneja objetos Date
 interface SolicitudData { id: number; tipo: string; fechaInicio: string; fechaFin: string; estado: string; solicitante: { nombre: string }; }
 interface ComunicadoData { id: number; titulo: string; contenido: string; createdAt: string; autor: { nombre: string }; }
 interface EventoData { id: number; titulo: string; fechaInicio: string; esFeriado: boolean; }
@@ -34,16 +33,14 @@ export default function DashboardPage() {
             const rol = getRol();     // Lee de localStorage
 
             if (!token || !rol) {
-                // Si no hay token/rol, el layout ya debería haber redirigido
                 router.replace('/');
                 return;
             }
 
-            // Usamos un placeholder para el nombre, idealmente vendría de una API /api/me
+            // Placeholder para el nombre del usuario
             setUser({ id: 0, rol: rol, nombre: `Usuario (${rol})` });
 
             try {
-                // Usar Promise.all para cargar datos en paralelo
                 const [solicitudesRes, comunicadosRes, eventosRes] = await Promise.all([
                     fetch(`${API_URL}/solicitudes?status=pending&limit=5`, {
                         headers: { 'Authorization': `Bearer ${token}` }
@@ -56,27 +53,32 @@ export default function DashboardPage() {
                     })
                 ]);
 
-                // Procesar respuestas
+                // Verificamos 'ok' y si falla, solo logueamos el status
                 if (solicitudesRes.ok) {
                     setPendingSolicitudes(await solicitudesRes.json());
                 } else {
-                    console.error("Error cargando solicitudes", await solicitudesRes.text());
+                    console.error(`Error cargando solicitudes: ${solicitudesRes.status} ${solicitudesRes.statusText}`);
                 }
 
                 if (comunicadosRes.ok) {
                     setLatestComunicados(await comunicadosRes.json());
                 } else {
-                    console.error("Error cargando comunicados", await comunicadosRes.text());
+                    console.error(`Error cargando comunicados: ${comunicadosRes.status} ${comunicadosRes.statusText}`);
                 }
 
                 if (eventosRes.ok) {
                     setUpcomingEventos(await eventosRes.json());
                 } else {
-                    console.error("Error cargando eventos", await eventosRes.text());
+                    console.error(`Error cargando eventos: ${eventosRes.status} ${eventosRes.statusText}`);
                 }
 
-            } catch (err) {
-                console.error("Error fetching dashboard data:", err);
+            } catch (err: unknown) { // <-- 1. Cambiamos any por unknown
+                // 2. Verificamos el tipo de error
+                if (err instanceof Error) {
+                    console.error("Error en fetch principal:", err.message);
+                } else {
+                    console.error("Error en fetch principal:", String(err));
+                }
                 setError("No se pudieron cargar los datos del dashboard.");
             } finally {
                 setLoading(false);
@@ -135,6 +137,8 @@ export default function DashboardPage() {
              const funcionarioLabel = count > 0 ? `Ver mis ${count} Solicitud(es) Pendiente(s)` : 'Ver mis Solicitudes';
              return { label: funcionarioLabel, href: '/dashboard/solicitudes', colorClass: 'border-blue-500' };
          }
+         // El error 'Not all code paths return a value' debería desaparecer
+         // al arreglar los otros errores de TypeScript.
     };
 
     const pendingTasks = getPendingTasks();
@@ -166,9 +170,16 @@ export default function DashboardPage() {
                         {latestComunicados.length === 0 ? (
                             <p className="text-gray-500 italic text-sm">No hay comunicados recientes.</p>
                         ) : (
-                            // --- INICIO DE LA CORRECCIÓN (Arregla error VS Code) ---
+                            // --- INICIO DE LA CORRECCIÓN ---
+                            // Eliminamos 'autor' del objeto que pasamos
                             latestComunicados.map((c) => (
-                                <ComunicadoCard key={c.id} comunicado={c as any} />
+                                <ComunicadoCard key={c.id} comunicado={{
+                                    id: c.id,
+                                    titulo: c.titulo,
+                                    contenido: c.contenido,
+                                    fechaPublicacion: c.createdAt 
+                                    // 'autor' se quita
+                                }} />
                             ))
                             // --- FIN DE LA CORRECCIÓN ---
                         )}
@@ -185,9 +196,15 @@ export default function DashboardPage() {
                        <p className="text-gray-500 italic text-sm">No hay eventos próximos registrados.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* --- INICIO DE LA CORRECCIÓN (Arregla error VS Code) --- */}
+                        {/* --- INICIO DE LA CORRECCIÓN --- */}
+                        {/* Eliminamos 'esFeriado' del objeto que pasamos */}
                         {upcomingEventos.map((e) => (
-                           <EventoCard key={e.id} evento={e as any} />
+                           <EventoCard key={e.id} evento={{
+                                id: e.id,
+                                titulo: e.titulo,
+                                fecha: e.fechaInicio
+                                // 'esFeriado' se quita
+                           }} />
                         ))}
                         {/* --- FIN DE LA CORRECCIÓN --- */}
                       </div>
