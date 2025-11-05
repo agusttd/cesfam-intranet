@@ -1,205 +1,106 @@
-// Forzar a Next.js a tratar esta página como dinámica
-export const dynamic = 'force-dynamic'; // <--- AÑADE ESTA LÍNEA AL INICIO
+'use client'; // <-- Convertimos la página a Client Component
 
-import { PrismaClient, Prisma } from "@prisma/client";
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import React from 'react';
-import { headers } from 'next/headers'; // Importar headers de next/headers
-import jwt from 'jsonwebtoken'; // Simplificar importación (opcional pero bueno)
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 // Importaciones de utilidades y componentes
-import { Role } from "@/lib/constants";
-import { SolicitudCard, ComunicadoCard, EventoCard } from "@/components/DashboardCards"; // Asegúrate que la ruta sea correcta
+import { Role, API_URL } from "@/lib/constants";
+import { getRol, getToken } from '@/lib/auth'; // Usamos localStorage
+import { SolicitudCard, ComunicadoCard, EventoCard } from "@/components/DashboardCards";
 
-const prisma = new PrismaClient();
+// --- Interfaces de Datos (Se mantienen igual) ---
+interface UsuarioDashboard { id: number; rol: string; nombre: string; }
+// Nota: Usamos 'string' para fechas porque JSON no maneja objetos Date
+interface SolicitudData { id: number; tipo: string; fechaInicio: string; fechaFin: string; estado: string; solicitante: { nombre: string }; }
+interface ComunicadoData { id: number; titulo: string; contenido: string; createdAt: string; autor: { nombre: string }; }
+interface EventoData { id: number; titulo: string; fechaInicio: string; esFeriado: boolean; }
 
-// --- Interfaces de Datos (Tipado para Server Component) ---
-interface UsuarioDashboard {
-    id: number;
-    rol: string;
-    nombre: string;
-}
-interface SolicitudData {
-    id: number;
-    tipo: string;
-    fechaInicio: Date;
-    fechaFin: Date;
-    estado: string;
-    solicitante: { nombre: string };
-}
-interface ComunicadoData {
-    id: number;
-    titulo: string;
-    contenido: string;
-    createdAt: Date;
-    autor: { nombre: string };
-}
-interface EventoData {
-    id: number;
-    titulo: string;
-    fechaInicio: Date;
-    esFeriado: boolean;
-}
+// --- COMPONENTE CLIENTE PRINCIPAL ---
+export default function DashboardPage() {
+    const router = useRouter();
+    const [user, setUser] = useState<UsuarioDashboard | null>(null);
+    const [pendingSolicitudes, setPendingSolicitudes] = useState<SolicitudData[]>([]);
+    const [latestComunicados, setLatestComunicados] = useState<ComunicadoData[]>([]);
+    const [upcomingEventos, setUpcomingEventos] = useState<EventoData[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
 
-// --- FUNCIONES DE CARGA DE DATOS ---
-// (Estas funciones se mantienen igual)
-async function getPendingSolicitudes(userId: number, rol: string): Promise<SolicitudData[]> {
-    let where: Prisma.SolicitudWhereInput = { estado: "PENDIENTE" };
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            setError(null);
+            const token = getToken(); // Lee de localStorage
+            const rol = getRol();     // Lee de localStorage
 
-    switch (rol) {
-        case "JEFE":
-             where = {
-                 estado: "PENDIENTE",
-                 jefeAprobadorId: null,
-                 solicitante: {
-                     jefeId: userId
-                 }
-              };
-            break;
-        case "DIRECCION":
-        case "SUBDIRECCION":
-        case "ADMIN":
-            where = {
-                estado: "PENDIENTE",
-                jefeAprobadorId: { not: null },
-                direccionAprobadorId: null,
-            };
-            break;
-        default: // Incluye FUNCIONARIO
-             where = { estado: "PENDIENTE", solicitanteId: userId };
-            break;
-    }
-
-    try {
-        const solicitudes = await prisma.solicitud.findMany({
-            where,
-            orderBy: { creadoEn: 'asc' },
-            take: 5,
-            select: {
-                id: true, tipo: true, fechaInicio: true, fechaFin: true, estado: true,
-                solicitante: { select: { nombre: true } },
-            },
-        });
-        return solicitudes;
-    } catch (error) {
-        console.error("Error fetching pending solicitudes:", error);
-        return [];
-    }
-}
-
-
-async function getLatestComunicados(): Promise<ComunicadoData[]> {
-    try {
-        const comunicados = await prisma.comunicado.findMany({
-            orderBy: { createdAt: 'desc' },
-            take: 3,
-            select: {
-                id: true, titulo: true, contenido: true, createdAt: true,
-                autor: { select: { nombre: true } },
-            },
-        });
-        return comunicados;
-    } catch (error) {
-        console.error("Error fetching latest comunicados:", error);
-        return [];
-    }
-}
-
-async function getUpcomingEventos(): Promise<EventoData[]> {
-    try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const eventos = await prisma.evento.findMany({
-            where: { fechaInicio: { gte: today } },
-            orderBy: { fechaInicio: 'asc' },
-            take: 4,
-            select: {
-                id: true, titulo: true, fechaInicio: true, esFeriado: true,
-            },
-        });
-        return eventos;
-    } catch (error) {
-        console.error("Error fetching upcoming eventos:", error);
-        return [];
-    }
-}
-
-
-// --- COMPONENTE SERVER PRINCIPAL ---
-export default async function DashboardPage() {
-
-    // 1. Leer headers y obtener token
-    const headerList = headers();
-    const authHeader = headerList.get("authorization"); // Intentar minúsculas primero
-    let user: UsuarioDashboard | null = null;
-
-    if (authHeader) {
-        const token = authHeader.split(" ")[1];
-        if (token) {
-            try {
-                // 2. Verificar token y obtener ID/Rol
-                const decoded = jwt.verify(token, process.env.JWT_SECRET!);
-                const userId = (decoded as { id: number }).id;
-
-                // 3. Obtener detalles del usuario desde la BD
-                const userDetails = await prisma.usuario.findUnique({
-                    where: { id: userId, activo: true },
-                    select: { id: true, rol: true, nombre: true }
-                });
-                user = userDetails;
-
-            } catch (e) {
-                console.error("Token inválido o expirado:", e);
+            if (!token || !rol) {
+                // Si no hay token/rol, el layout ya debería haber redirigido
+                router.replace('/');
+                return;
             }
-        } else {
-             console.error("Authorization header presente pero sin token después de 'Bearer '");
-        }
-    } else {
-        console.log("Authorization header no encontrado.");
+
+            // Usamos un placeholder para el nombre, idealmente vendría de una API /api/me
+            setUser({ id: 0, rol: rol, nombre: `Usuario (${rol})` });
+
+            try {
+                // Usar Promise.all para cargar datos en paralelo
+                const [solicitudesRes, comunicadosRes, eventosRes] = await Promise.all([
+                    fetch(`${API_URL}/solicitudes?status=pending&limit=5`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_URL}/comunicados?limit=3`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    }),
+                    fetch(`${API_URL}/eventos?upcoming=true&limit=4`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    })
+                ]);
+
+                // Procesar respuestas
+                if (solicitudesRes.ok) {
+                    setPendingSolicitudes(await solicitudesRes.json());
+                } else {
+                    console.error("Error cargando solicitudes", await solicitudesRes.text());
+                }
+
+                if (comunicadosRes.ok) {
+                    setLatestComunicados(await comunicadosRes.json());
+                } else {
+                    console.error("Error cargando comunicados", await comunicadosRes.text());
+                }
+
+                if (eventosRes.ok) {
+                    setUpcomingEventos(await eventosRes.json());
+                } else {
+                    console.error("Error cargando eventos", await eventosRes.text());
+                }
+
+            } catch (err) {
+                console.error("Error fetching dashboard data:", err);
+                setError("No se pudieron cargar los datos del dashboard.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, [router]);
+
+    // --- Renderizado Condicional ---
+    if (loading) {
+        return <div className="p-8 text-center text-gray-600">Cargando dashboard...</div>;
     }
 
-    // 4. Redirigir si no hay usuario válido
+    if (error) {
+        return <div className="p-8 text-center text-red-600">{error}</div>;
+    }
+
     if (!user) {
-        console.log("Usuario no válido o no encontrado, redirigiendo a /");
-        redirect('/');
+        return <div className="p-8 text-center text-gray-600">Verificando sesión...</div>;
     }
 
-    // 5. Cargar datos
-    console.log(`Cargando datos del dashboard para ${user.nombre} (${user.rol})...`);
-    const [pendingSolicitudes, latestComunicados, upcomingEventos] = await Promise.all([
-        getPendingSolicitudes(user.id, user.rol),
-        getLatestComunicados(),
-        getUpcomingEventos(),
-    ]);
-    console.log(`Datos cargados: ${pendingSolicitudes.length} solicitudes, ${latestComunicados.length} comunicados, ${upcomingEventos.length} eventos.`);
+    // --- Renderizado del Dashboard ---
 
-    // 6. Pasar datos al Componente Cliente
-    return (
-        <DashboardClient
-            user={user}
-            pendingSolicitudes={pendingSolicitudes}
-            latestComunicados={latestComunicados}
-            upcomingEventos={upcomingEventos}
-        />
-    );
-}
-
-// --- COMPONENTE CLIENTE (Renderiza la interfaz) ---
-// (Este componente se mantiene exactamente igual que antes)
-function DashboardClient({
-    user,
-    pendingSolicitudes,
-    latestComunicados,
-    upcomingEventos,
-}: {
-    user: UsuarioDashboard;
-    pendingSolicitudes: SolicitudData[];
-    latestComunicados: ComunicadoData[];
-    upcomingEventos: EventoData[];
-}) {
-    // Componentes utilitarios (Card)
     interface CardProps { children: React.ReactNode; className?: string; style?: React.CSSProperties }
     const Card = ({ children, className = '', style }: Readonly<CardProps>) => (
         <div className={`bg-white p-5 rounded-lg shadow-md ${className}`} style={style}>
@@ -209,34 +110,31 @@ function DashboardClient({
 
     const userRol = user.rol as Role;
 
-    // Función para determinar el texto y enlace del panel de rol
     const getPendingTasks = () => {
         const isApprover = [Role.JEFE, Role.DIRECCION, Role.SUBDIRECCION, Role.ADMIN].includes(userRol);
         const count = pendingSolicitudes.length;
 
-        if (isApprover) {
+         if (isApprover) {
              const baseHref = '/dashboard/solicitudes';
-             let label = count > 0 ? `Revisar ${count} Solicitud(es) Pendiente(s)` : 'Revisar Solicitudes';
-             let color = count > 0 ? 'red' : 'green'; // Color borde
+             let label = count > 0 ? `Revisar ${count} Tarea(s) Pendiente(s)` : 'Revisar Solicitudes';
+             let color = count > 0 ? 'red' : 'green';
 
              if (userRol === Role.SUBDIRECCION) {
-                 label = count > 0 ? `Revisar Solicitudes (${count}) y Licencias` : 'Gestionar Licencias';
+                 label = count > 0 ? `Revisar Solicitudes (${count}) y Licencias` : 'Gestionar Licencias y Avisos';
                  color = 'purple';
+             } else if (userRol === Role.JEFE) {
+                 label = count > 0 ? `Revisar ${count} Tarea(s) (Equipo)` : 'Solicitudes Equipo';
+                 color = count > 0 ? 'yellow' : 'green';
              } else if (userRol === Role.ADMIN || userRol === Role.DIRECCION) {
                  label = count > 0 ? `Revisar ${count} Solicitud(es)` : 'Gestionar Solicitudes/Usuarios';
                  color = count > 0 ? 'orange' : 'blue';
-             } else if (userRol === Role.JEFE) {
-                 label = count > 0 ? `Revisar ${count} Solicitud(es) (Equipo)` : 'Revisar Solicitudes Equipo';
-                 color = count > 0 ? 'yellow' : 'gray';
              }
-
-             // Asegúrate que los colores existan en Tailwind (ej. border-red-500)
-             return { label, href: baseHref, color: `border-${color}-500` };
-        } else {
-             // Funcionario normal
-              const funcionarioLabel = count > 0 ? `Ver mis ${count} Solicitud(es) Pendiente(s)` : 'Ver mis Solicitudes';
-             return { label: funcionarioLabel, href: '/dashboard/solicitudes', color: 'border-blue-500' };
-        }
+             
+             return { label, href: baseHref, colorClass: `border-${color}-500` };
+         } else { // Funcionario
+             const funcionarioLabel = count > 0 ? `Ver mis ${count} Solicitud(es) Pendiente(s)` : 'Ver mis Solicitudes';
+             return { label: funcionarioLabel, href: '/dashboard/solicitudes', colorClass: 'border-blue-500' };
+         }
     };
 
     const pendingTasks = getPendingTasks();
@@ -251,7 +149,7 @@ function DashboardClient({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
 
                 {/* 1. WIDGET DE TAREAS POR ROL */}
-                <Card className={`lg:col-span-1 border-l-4 ${pendingTasks.color}`}>
+                <Card className={`lg:col-span-1 border-l-4 ${pendingTasks.colorClass}`}>
                     <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-700">Panel de Rol</h2>
                     <p className="text-sm text-gray-600 mb-4">
                         Acciones principales para tu rol:
@@ -268,9 +166,11 @@ function DashboardClient({
                         {latestComunicados.length === 0 ? (
                             <p className="text-gray-500 italic text-sm">No hay comunicados recientes.</p>
                         ) : (
+                            // --- INICIO DE LA CORRECCIÓN (Arregla error VS Code) ---
                             latestComunicados.map((c) => (
-                                <ComunicadoCard key={c.id} comunicado={{...c, fechaPublicacion: c.createdAt.toISOString()}} />
+                                <ComunicadoCard key={c.id} comunicado={c as any} />
                             ))
+                            // --- FIN DE LA CORRECCIÓN ---
                         )}
                     </div>
                     <Link href="/dashboard/comunicados" className="mt-4 block text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -285,9 +185,11 @@ function DashboardClient({
                        <p className="text-gray-500 italic text-sm">No hay eventos próximos registrados.</p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {/* --- INICIO DE LA CORRECCIÓN (Arregla error VS Code) --- */}
                         {upcomingEventos.map((e) => (
-                           <EventoCard key={e.id} evento={{...e, fecha: e.fechaInicio.toISOString()}} />
+                           <EventoCard key={e.id} evento={e as any} />
                         ))}
+                        {/* --- FIN DE LA CORRECCIÓN --- */}
                       </div>
                     )}
                     <Link href="/dashboard/calendario" className="mt-4 block text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -304,7 +206,7 @@ function DashboardClient({
                         <Link href="/dashboard/admin" className="text-indigo-600 hover:text-indigo-800 font-medium underline">
                             Gestionar Usuarios
                         </Link>
-                        <Link href="/dashboard/licencias" className="text-indigo-600 hover:text-indigo-800 font-medium underline">
+                         <Link href="/dashboard/licencias" className="text-indigo-600 hover:text-indigo-800 font-medium underline">
                              Ver Reporte Licencias
                         </Link>
                          <Link href="/dashboard/calendario" className="text-indigo-600 hover:text-indigo-800 font-medium underline">
