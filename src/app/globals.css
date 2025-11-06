@@ -24,3 +24,69 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* --- Estilos de Tailwind para React-Calendar --- */
+
+/* Contenedor principal: sin bordes, sombra y padding */
+.react-calendar {
+  @apply w-full max-w-md border-none rounded-lg bg-white p-4 shadow-md;
+}
+
+/* Botones de navegación (Mes/Año) */
+.react-calendar__navigation button {
+  @apply p-2 font-semibold text-blue-600 hover:bg-gray-100 rounded-md;
+}
+.react-calendar__navigation button:disabled {
+  @apply cursor-not-allowed opacity-50;
+}
+
+/* Nombres de los días de la semana (L, M, M...) */
+.react-calendar__month-view__weekdays__weekday {
+  @apply text-sm font-bold text-blue-800;
+}
+.react-calendar__month-view__weekdays__weekday abbr {
+    @apply no-underline; /* <-- Quita el subrayado molesto */
+}
+
+/* Botones de día (números) */
+.react-calendar__tile {
+  @apply p-2 rounded-md hover:bg-gray-100;
+}
+
+/* FIX: Quitar el subrayado de los números de día */
+.react-calendar__tile abbr {
+  @apply no-underline; /* <-- Quita el subrayado molesto */
+}
+
+/* Día de hoy */
+.react-calendar__tile--now {
+  @apply bg-blue-100 font-bold text-blue-700;
+}
+.react-calendar__tile--now:hover {
+   @apply bg-blue-200;
+}
+
+/* Día seleccionado */
+.react-calendar__tile--active {
+  @apply bg-blue-600 font-bold text-white;
+}
+.react-calendar__tile--active:hover {
+   @apply bg-blue-700;
+}
+
+/* Días de otros meses (atenuados) */
+.react-calendar__month-view__days__day--neighboringMonth {
+  @apply text-gray-400;
+}
+
+/* --- Nuestras Clases Personalizadas (las que definimos en page.tsx) --- */
+
+/* Clase para días con eventos */
+.highlight-event {
+  @apply bg-blue-100 rounded-full;
+}
+
+/* Clase para días feriados */
+.highlight-feriado {
+  @apply bg-red-100 rounded-full font-bold text-red-700;
+}
