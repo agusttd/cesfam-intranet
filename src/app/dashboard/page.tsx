@@ -1,12 +1,10 @@
-"use client"; // <-- Mantenemos Client Component
+"use client"; 
 
 import Link from "next/link";
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-
-// Importaciones de utilidades y componentes
 import { Role, API_URL } from "@/lib/constants";
-import { getRol, getToken } from "@/lib/auth"; // Usamos localStorage
+import { getRol, getToken } from "@/lib/auth"; // localStorage
 import {
   SolicitudCard,
   ComunicadoCard,
@@ -108,8 +106,6 @@ export default function DashboardPage() {
           );
         }
       } catch (err: unknown) {
-        // <-- 1. Cambiamos any por unknown
-        // 2. Verificamos el tipo de error
         if (err instanceof Error) {
           console.error("Error en fetch principal:", err.message);
         } else {
@@ -209,8 +205,6 @@ export default function DashboardPage() {
         colorClass: "border-blue-500",
       };
     }
-    // El error 'Not all code paths return a value' debería desaparecer
-    // al arreglar los otros errores de TypeScript.
   };
 
   const pendingTasks = getPendingTasks();
@@ -252,8 +246,6 @@ export default function DashboardPage() {
                 No hay comunicados recientes.
               </p>
             ) : (
-              // --- INICIO DE LA CORRECCIÓN ---
-              // Eliminamos 'autor' del objeto que pasamos
               latestComunicados.map((c) => (
                 <ComunicadoCard
                   key={c.id}
@@ -262,11 +254,9 @@ export default function DashboardPage() {
                     titulo: c.titulo,
                     contenido: c.contenido,
                     fechaPublicacion: c.createdAt,
-                    // 'autor' se quita
                   }}
                 />
               ))
-              // --- FIN DE LA CORRECCIÓN ---
             )}
           </div>
           <Link
@@ -288,8 +278,6 @@ export default function DashboardPage() {
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* --- INICIO DE LA CORRECCIÓN --- */}
-              {/* Eliminamos 'esFeriado' del objeto que pasamos */}
               {upcomingEventos.map((e) => (
                 <EventoCard
                   key={e.id}
@@ -297,11 +285,9 @@ export default function DashboardPage() {
                     id: e.id,
                     titulo: e.titulo,
                     fecha: e.fechaInicio,
-                    // 'esFeriado' se quita
                   }}
                 />
               ))}
-              {/* --- FIN DE LA CORRECCIÓN --- */}
             </div>
           )}
           <Link
