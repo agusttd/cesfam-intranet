@@ -50,7 +50,7 @@ body {
 
 /* Botones de día (números) */
 .react-calendar__tile {
-  @apply p-2 rounded-md hover:bg-gray-100;
+  @apply text-gray-800;
 }
 
 /* FIX: Quitar el subrayado de los números de día */
@@ -76,7 +76,7 @@ body {
 
 /* Días de otros meses (atenuados) */
 .react-calendar__month-view__days__day--neighboringMonth {
-  @apply text-gray-400;
+  @apply text-gray-500;
 }
 
 /* --- Nuestras Clases Personalizadas (las que definimos en page.tsx) --- */

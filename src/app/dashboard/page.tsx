@@ -1,344 +1,262 @@
-"use client"; 
+'use client';
 
 import Link from "next/link";
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { format, addDays, startOfWeek, subWeeks, addWeeks, isSameDay, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
+
 import { Role, API_URL } from "@/lib/constants";
-import { getRol, getToken } from "@/lib/auth"; // localStorage
-import {
-  SolicitudCard,
-  ComunicadoCard,
-  EventoCard,
-} from "@/components/DashboardCards";
+import { getRol, getToken } from '@/lib/auth';
+import { SolicitudCard, ComunicadoCard, EventoCard } from "@/components/DashboardCards";
 
-// --- Interfaces de Datos ---
-interface UsuarioDashboard {
-  id: number;
-  rol: string;
-  nombre: string;
-}
-interface SolicitudData {
-  id: number;
-  tipo: string;
-  fechaInicio: string;
-  fechaFin: string;
-  estado: string;
-  solicitante: { nombre: string };
-}
-interface ComunicadoData {
-  id: number;
-  titulo: string;
-  contenido: string;
-  createdAt: string;
-  autor: { nombre: string };
-}
-interface EventoData {
-  id: number;
-  titulo: string;
-  fechaInicio: string;
-  esFeriado: boolean;
-}
+// --- Interfaces ---
+interface UsuarioDashboard { id: number; rol: string; nombre: string; }
+interface SolicitudData { id: number; tipo: string; fechaInicio: string; fechaFin: string; estado: string; solicitante: { nombre: string }; }
+interface ComunicadoData { id: number; titulo: string; contenido: string; createdAt: string; autor: { nombre: string }; }
+interface EventoData { id: number; titulo: string; fechaInicio: string; esFeriado: boolean; }
+interface FeriadoAPI { nombre: string; comentarios: string; fecha: string; irrenunciable: string; tipo: string; }
+interface FeriadoNacional { fecha: string; nombre: string; }
 
-// --- COMPONENTE CLIENTE PRINCIPAL ---
-export default function DashboardPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<UsuarioDashboard | null>(null);
-  const [pendingSolicitudes, setPendingSolicitudes] = useState<SolicitudData[]>(
-    []
-  );
-  const [latestComunicados, setLatestComunicados] = useState<ComunicadoData[]>(
-    []
-  );
-  const [upcomingEventos, setUpcomingEventos] = useState<EventoData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      const token = getToken(); // Lee de localStorage
-      const rol = getRol(); // Lee de localStorage
-
-      if (!token || !rol) {
-        router.replace("/");
-        return;
-      }
-
-      // Placeholder para el nombre del usuario
-      setUser({ id: 0, rol: rol, nombre: `Usuario (${rol})` });
-
-      try {
-        const [solicitudesRes, comunicadosRes, eventosRes] = await Promise.all([
-          fetch(`${API_URL}/solicitudes?status=pending&limit=5`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/comunicados?limit=3`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`${API_URL}/eventos?upcoming=true&limit=4`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-
-        // Verificamos 'ok' y si falla, solo logueamos el status
-        if (solicitudesRes.ok) {
-          setPendingSolicitudes(await solicitudesRes.json());
-        } else {
-          console.error(
-            `Error cargando solicitudes: ${solicitudesRes.status} ${solicitudesRes.statusText}`
-          );
-        }
-
-        if (comunicadosRes.ok) {
-          setLatestComunicados(await comunicadosRes.json());
-        } else {
-          console.error(
-            `Error cargando comunicados: ${comunicadosRes.status} ${comunicadosRes.statusText}`
-          );
-        }
-
-        if (eventosRes.ok) {
-          setUpcomingEventos(await eventosRes.json());
-        } else {
-          console.error(
-            `Error cargando eventos: ${eventosRes.status} ${eventosRes.statusText}`
-          );
-        }
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          console.error("Error en fetch principal:", err.message);
-        } else {
-          console.error("Error en fetch principal:", String(err));
-        }
-        setError("No se pudieron cargar los datos del dashboard.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [router]);
-
-  // --- Renderizado Condicional ---
-  if (loading) {
-    return (
-      <div className="p-8 text-center text-gray-600">Cargando dashboard...</div>
-    );
-  }
-
-  if (error) {
-    return <div className="p-8 text-center text-red-600">{error}</div>;
-  }
-
-  if (!user) {
-    return (
-      <div className="p-8 text-center text-gray-600">Verificando sesión...</div>
-    );
-  }
-
-  // --- Renderizado del Dashboard ---
-
-  interface CardProps {
+// --- Interfaz para el componente Card local (Soluciona el error de la imagen a18c1f) ---
+interface LocalCardProps {
     children: React.ReactNode;
     className?: string;
     style?: React.CSSProperties;
-  }
-  const Card = ({ children, className = "", style }: Readonly<CardProps>) => (
-    <div
-      className={`bg-white p-5 rounded-lg shadow-md ${className}`}
-      style={style}
-    >
-      {children}
-    </div>
-  );
+}
 
-  const userRol = user.rol as Role;
+export default function DashboardPage() {
+    const router = useRouter();
+    const [user, setUser] = useState<UsuarioDashboard | null>(null);
+    const [pendingSolicitudes, setPendingSolicitudes] = useState<SolicitudData[]>([]);
+    const [latestComunicados, setLatestComunicados] = useState<ComunicadoData[]>([]);
+    const [upcomingEventos, setUpcomingEventos] = useState<EventoData[]>([]);
+    const [feriadosNacionales, setFeriadosNacionales] = useState<FeriadoNacional[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
 
-  const getPendingTasks = () => {
-    const isApprover = [
-      Role.JEFE,
-      Role.DIRECCION,
-      Role.SUBDIRECCION,
-      Role.ADMIN,
-    ].includes(userRol);
-    const count = pendingSolicitudes.length;
+    // --- LISTA FIJA DE FERIADOS (Backup por si falla la API) ---
+    const FERIADOS_BACKUP: FeriadoNacional[] = [
+        { fecha: '2025-01-01', nombre: 'Año Nuevo' },
+        { fecha: '2025-04-18', nombre: 'Viernes Santo' },
+        { fecha: '2025-04-19', nombre: 'Sábado Santo' },
+        { fecha: '2025-05-01', nombre: 'Día del Trabajador' },
+        { fecha: '2025-05-21', nombre: 'Día de las Glorias Navales' },
+        { fecha: '2025-06-20', nombre: 'Día Nacional de los Pueblos Indígenas' },
+        { fecha: '2025-06-29', nombre: 'San Pedro y San Pablo' },
+        { fecha: '2025-07-16', nombre: 'Día de la Virgen del Carmen' },
+        { fecha: '2025-08-15', nombre: 'Asunción de la Virgen' },
+        { fecha: '2025-09-18', nombre: 'Independencia Nacional' },
+        { fecha: '2025-09-19', nombre: 'Día de las Glorias del Ejército' },
+        { fecha: '2025-10-12', nombre: 'Encuentro de Dos Mundos' },
+        { fecha: '2025-10-31', nombre: 'Día de las Iglesias Evangélicas' },
+        { fecha: '2025-11-01', nombre: 'Día de Todos los Santos' },
+        { fecha: '2025-12-08', nombre: 'Inmaculada Concepción' },
+        { fecha: '2025-12-25', nombre: 'Navidad' },
+    ];
 
-    if (isApprover) {
-      const baseHref = "/dashboard/solicitudes";
-      let label =
-        count > 0
-          ? `Revisar ${count} Tarea(s) Pendiente(s)`
-          : "Revisar Solicitudes";
-      let color = count > 0 ? "red" : "green";
+    useEffect(() => {
+        const fetchData = async () => {
+            setLoading(true);
+            setError(null);
+            const token = getToken();
+            const rol = getRol();
 
-      if (userRol === Role.SUBDIRECCION) {
-        label =
-          count > 0
-            ? `Revisar Solicitudes (${count}) y Licencias`
-            : "Gestionar Licencias y Avisos";
-        color = "purple";
-      } else if (userRol === Role.JEFE) {
-        label =
-          count > 0
-            ? `Revisar ${count} Tarea(s) (Equipo)`
-            : "Solicitudes Equipo";
-        color = count > 0 ? "yellow" : "green";
-      } else if (userRol === Role.ADMIN || userRol === Role.DIRECCION) {
-        label =
-          count > 0
-            ? `Revisar ${count} Solicitud(es)`
-            : "Gestionar Solicitudes/Usuarios";
-        color = count > 0 ? "orange" : "blue";
-      }
+            if (!token || !rol) {
+                router.replace('/');
+                return;
+            }
 
-      return { label, href: baseHref, colorClass: `border-${color}-500` };
-    } else {
-      // Funcionario
-      const funcionarioLabel =
-        count > 0
-          ? `Ver mis ${count} Solicitud(es) Pendiente(s)`
-          : "Ver mis Solicitudes";
-      return {
-        label: funcionarioLabel,
-        href: "/dashboard/solicitudes",
-        colorClass: "border-blue-500",
-      };
-    }
-  };
+            setUser({ id: 0, rol: rol, nombre: `Usuario (${rol})` });
 
-  const pendingTasks = getPendingTasks();
+            try {
+                // 1. Cargar datos internos
+                const [solRes, comRes, eveRes] = await Promise.all([
+                    fetch(`${API_URL}/solicitudes?status=pending&limit=5`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/comunicados?limit=3`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                    fetch(`${API_URL}/eventos?upcoming=true&limit=4`, { headers: { 'Authorization': `Bearer ${token}` } })
+                ]);
 
-  return (
-    <div className="p-6 md:p-8 space-y-8">
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-800">
-        Panel General 🏠
-      </h1>
-      <p className="text-gray-600">
-        ¡Bienvenido, {user.nombre}! ({user.rol})
-      </p>
+                if (solRes.ok) setPendingSolicitudes(await solRes.json());
+                if (comRes.ok) setLatestComunicados(await comRes.json());
+                if (eveRes.ok) setUpcomingEventos(await eveRes.json());
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
-        {/* 1. WIDGET DE TAREAS POR ROL */}
-        <Card className={`lg:col-span-1 border-l-4 ${pendingTasks.colorClass}`}>
-          <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-700">
-            Panel de Rol
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Acciones principales para tu rol:
-          </p>
-          <Link
-            href={pendingTasks.href}
-            className={`block p-3 rounded-md text-center font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow`}
-          >
-            {pendingTasks.label} →
-          </Link>
-        </Card>
+                // 2. Cargar Feriados (Intento de API real con fallback a lista fija)
+                let todosFeriados: FeriadoNacional[] = [];
+                const currentYear = new Date().getFullYear();
+                try {
+                    const feriadosRes = await fetch(`https://apis.digital.gob.cl/fl/feriados/${currentYear}`);
+                    if (feriadosRes.ok) {
+                        const data: FeriadoAPI[] = await feriadosRes.json();
+                        todosFeriados = data.map(f => ({ fecha: f.fecha, nombre: f.nombre }));
+                    } else {
+                        throw new Error("API feriados falló");
+                    }
+                } catch (err) {
+                    console.warn("Usando feriados de respaldo:", err);
+                    todosFeriados = FERIADOS_BACKUP;
+                }
+                
+                setFeriadosNacionales(todosFeriados.filter(f => new Date(f.fecha) >= new Date(new Date().setHours(0,0,0,0))));
 
-        {/* 2. WIDGET DE COMUNICADOS */}
-        <Card className="lg:col-span-2">
-          <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-700">
-            📣 Comunicados Recientes
-          </h2>
-          <div className="space-y-3 max-h-60 overflow-y-auto pr-2">
-            {latestComunicados.length === 0 ? (
-              <p className="text-gray-500 italic text-sm">
-                No hay comunicados recientes.
-              </p>
-            ) : (
-              latestComunicados.map((c) => (
-                <ComunicadoCard
-                  key={c.id}
-                  comunicado={{
-                    id: c.id,
-                    titulo: c.titulo,
-                    contenido: c.contenido,
-                    fechaPublicacion: c.createdAt,
-                  }}
-                />
-              ))
-            )}
-          </div>
-          <Link
-            href="/dashboard/comunicados"
-            className="mt-4 block text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Ver todos los comunicados →
-          </Link>
-        </Card>
+            } catch (err: unknown) {
+                if (err instanceof Error) console.error("Error fetch dashboard:", err.message);
+                setError("Error al cargar algunos datos.");
+            } finally {
+                setLoading(false);
+            }
+        };
 
-        {/* 3. WIDGET DE CALENDARIO */}
-        <Card className="lg:col-span-3">
-          <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-700">
-            📅 Próximos Eventos y Feriados
-          </h2>
-          {upcomingEventos.length === 0 ? (
-            <p className="text-gray-500 italic text-sm">
-              No hay eventos próximos registrados.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {upcomingEventos.map((e) => (
-                <EventoCard
-                  key={e.id}
-                  evento={{
-                    id: e.id,
-                    titulo: e.titulo,
-                    fecha: e.fechaInicio,
-                  }}
-                />
-              ))}
+        fetchData();
+    }, [router]);
+
+    const prevWeek = () => setCurrentWeekDate(subWeeks(currentWeekDate, 1));
+    const nextWeek = () => setCurrentWeekDate(addWeeks(currentWeekDate, 1));
+    const resetWeek = () => setCurrentWeekDate(new Date());
+
+    if (loading) return <div className="p-8 text-center text-gray-500">Cargando panel...</div>;
+    if (!user) return null;
+
+    // --- Componente Card Local con Tipos Corregidos ---
+    const Card = ({ children, className = '', style }: LocalCardProps) => (
+        <div className={`bg-white p-5 rounded-lg shadow-md ${className}`} style={style}>
+            {children}
+        </div>
+    );
+
+    const userRol = user.rol as Role;
+    const isApprover = [Role.JEFE, Role.DIRECCION, Role.SUBDIRECCION, Role.ADMIN].includes(userRol);
+    const pendingCount = pendingSolicitudes.length;
+
+    let taskLabel = isApprover ? (pendingCount > 0 ? `Revisar ${pendingCount} Pendiente(s)` : 'Revisar Solicitudes') : (pendingCount > 0 ? `Ver mis ${pendingCount} Solicitud(es)` : 'Ver mis Solicitudes');
+    let taskColor = (isApprover && pendingCount > 0) ? 'border-red-500' : 'border-blue-500';
+    let taskHref = '/dashboard/solicitudes';
+
+    const weekStart = startOfWeek(currentWeekDate, { weekStartsOn: 0 });
+    const weekEnd = addDays(weekStart, 6);
+    
+    // Combinar eventos y feriados para la lista
+    // Ajuste: Usamos parseISO para asegurar que la fecha se interprete correctamente
+    const combinedEventsForList = [
+        ...upcomingEventos.map(e => ({ ...e, type: 'evento', dateObj: parseISO(e.fechaInicio) })),
+        ...feriadosNacionales.map((f, i) => ({ 
+            id: -i, 
+            titulo: f.nombre, 
+            fechaInicio: f.fecha, 
+            esFeriado: true, 
+            type: 'feriado', 
+            dateObj: parseISO(f.fecha) 
+        }))
+    ].filter(e => e.dateObj >= weekStart && e.dateObj <= addDays(weekEnd, 14))
+     .sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
+     .slice(0, 6);
+
+    return (
+        <div className="p-6 md:p-8 space-y-8">
+            <header className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-800">Hola, {user.nombre} 👋</h1>
+                    <p className="text-gray-600">Bienvenido a la Intranet.</p>
+                </div>
+                 <div className="text-sm text-gray-500 font-medium">
+                    {format(new Date(), "EEEE d 'de' MMMM", { locale: es })}
+                </div>
+            </header>
+
+            {error && <div className="bg-red-100 text-red-700 p-3 rounded mb-6 text-sm">{error}</div>}
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* WIDGET 1: Tareas / Rol */}
+                <Card className={`lg:col-span-1 border-l-4 ${taskColor}`}>
+                    <h2 className="text-lg font-semibold text-gray-700 mb-2">Tu Actividad</h2>
+                    <Link href={taskHref} className="block w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white text-center font-semibold rounded transition">
+                        {taskLabel} →
+                    </Link>
+                </Card>
+
+                {/* WIDGET 2: Comunicados */}
+                <Card className="lg:col-span-2">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold text-gray-700">📣 Últimos Comunicados</h2>
+                        <Link href="/dashboard/comunicados" className="text-sm text-blue-500 hover:underline">Ver todos</Link>
+                    </div>
+                    <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                        {latestComunicados.length === 0 ? (
+                            <p className="text-gray-400 italic text-sm">Sin novedades.</p>
+                        ) : (
+                            latestComunicados.map(c => (
+                                <ComunicadoCard key={c.id} comunicado={{ ...c, fechaPublicacion: c.createdAt }} />
+                            ))
+                        )}
+                    </div>
+                </Card>
+
+                {/* WIDGET 3: Mini Calendario con Navegación */}
+                <Card className="lg:col-span-3">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-bold text-gray-800">📅 Agenda Institucional</h2>
+                        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+                            <button onClick={prevWeek} className="px-3 py-1 text-gray-600 hover:bg-white rounded-md transition">◀</button>
+                            <button onClick={resetWeek} className="px-3 py-1 text-sm font-medium text-blue-700 hover:bg-white rounded-md transition">Hoy</button>
+                            <button onClick={nextWeek} className="px-3 py-1 text-gray-600 hover:bg-white rounded-md transition">▶</button>
+                        </div>
+                    </div>
+                    
+                    <div className="mb-2 text-center text-sm font-medium text-blue-600 bg-blue-50 py-2 rounded-md">
+                        Semana del {format(weekStart, "d 'de' MMMM", { locale: es })}
+                    </div>
+                    <div className="grid grid-cols-7 gap-2 mb-8 text-center">
+                        {['Do','Lu','Ma','Mi','Ju','Vi','Sá'].map(d => <div key={d} className="text-xs font-bold text-gray-400 uppercase">{d}</div>)}
+                        {Array.from({ length: 7 }).map((_, i) => {
+                            const d = addDays(weekStart, i);
+                            const isToday = isSameDay(d, new Date());
+                            // IMPORTANTE: Usar el formato ISO para comparar con lo que viene de la API/Feriados
+                            const dateStr = format(d, 'yyyy-MM-dd'); 
+                            
+                            const hasEvent = upcomingEventos.some(e => e.fechaInicio.startsWith(dateStr));
+                            const isFeriado = feriadosNacionales.some(f => f.fecha === dateStr);
+
+                            return (
+                                <div key={i} className={`flex flex-col items-center p-3 rounded-xl transition ${isToday ? 'bg-blue-600 text-white shadow-lg scale-105' : 'bg-gray-50 hover:bg-gray-100'} ${isFeriado && !isToday ? 'bg-red-50 text-red-700' : ''}`}>
+                                    <span className={`text-lg font-bold ${isToday ? 'text-white' : (isFeriado ? 'text-red-600' : 'text-gray-700')}`}>{format(d, 'd')}</span>
+                                    <div className="flex mt-2 space-x-1 h-2">
+                                        {isFeriado && <span className={`w-2 h-2 rounded-full ${isToday ? 'bg-red-300' : 'bg-red-500'}`} title="Feriado"></span>}
+                                        {hasEvent && <span className={`w-2 h-2 rounded-full ${isToday ? 'bg-blue-300' : 'bg-blue-500'}`} title="Evento"></span>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <h3 className="text-base font-semibold text-gray-700 mb-4 flex items-center">
+                        📌 Próximas Actividades <span className="ml-2 text-xs font-normal text-gray-500">(próximas 3 semanas)</span>
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {combinedEventsForList.length === 0 ? (
+                            <p className="text-gray-400 italic col-span-full py-4 text-center bg-gray-50 rounded-lg">No hay eventos programados para estas fechas.</p>
+                        ) : (
+                            combinedEventsForList.map((e, idx) => (
+                                <div key={`${e.type}-${e.id || idx}`} className={`flex items-center p-4 rounded-xl border-l-4 shadow-sm transition hover:shadow-md ${e.esFeriado ? 'bg-red-50 border-red-500' : 'bg-white border-blue-500'}`}>
+                                    <div className={`text-center mr-4 min-w-[3.5rem]`}>
+                                        <span className={`block text-xs font-bold uppercase tracking-wider ${e.esFeriado ? 'text-red-600' : 'text-blue-600'}`}>{format(e.dateObj, 'MMM', { locale: es })}</span>
+                                        <span className={`block text-2xl font-extrabold leading-none ${e.esFeriado ? 'text-red-800' : 'text-gray-800'}`}>{format(e.dateObj, 'd')}</span>
+                                    </div>
+                                    <div className="overflow-hidden">
+                                        <p className="font-bold text-gray-800 leading-tight truncate" title={e.titulo}>{e.titulo}</p>
+                                        {e.esFeriado && <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold text-red-700 bg-red-100 rounded-full">FERIADO</span>}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div className="mt-6 text-right">
+                        <Link href="/dashboard/calendario" className="inline-flex items-center text-sm font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 px-4 py-2 rounded-lg transition hover:bg-blue-100">
+                            Ver calendario completo →
+                        </Link>
+                    </div>
+                </Card>
             </div>
-          )}
-          <Link
-            href="/dashboard/calendario"
-            className="mt-4 block text-sm text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Ver Calendario Completo →
-          </Link>
-        </Card>
-      </div>
-
-      {/* ENLACES RÁPIDOS PARA ADMIN/DIRECCIÓN */}
-      {(userRol === Role.ADMIN || userRol === Role.DIRECCION) && (
-        <Card className="mt-8 bg-indigo-50 border border-indigo-200">
-          <h2 className="text-lg md:text-xl font-semibold text-indigo-800 mb-4">
-            Panel de Administración
-          </h2>
-          <div className="flex flex-wrap gap-4">
-            <Link
-              href="/dashboard/admin"
-              className="text-indigo-600 hover:text-indigo-800 font-medium underline"
-            >
-              Gestionar Usuarios
-            </Link>
-            <Link
-              href="/dashboard/licencias"
-              className="text-indigo-600 hover:text-indigo-800 font-medium underline"
-            >
-              Ver Reporte Licencias
-            </Link>
-            <Link
-              href="/dashboard/calendario"
-              className="text-indigo-600 hover:text-indigo-800 font-medium underline"
-            >
-              Administrar Calendario
-            </Link>
-            <Link
-              href="/dashboard/documentos"
-              className="text-indigo-600 hover:text-indigo-800 font-medium underline"
-            >
-              Administrar Documentos
-            </Link>
-            <Link
-              href="/dashboard/comunicados"
-              className="text-indigo-600 hover:text-indigo-800 font-medium underline"
-            >
-              Administrar Comunicados
-            </Link>
-          </div>
-        </Card>
-      )}
-    </div>
-  );
+        </div>
+    );
 }
