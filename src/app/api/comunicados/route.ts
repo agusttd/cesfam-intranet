@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
 import { PrismaClient } from "@prisma/client";
-import jwt from "jsonwebtoken"; // <--- IMPORTAR JWT
+import jwt from "jsonwebtoken";
 
 const prisma = new PrismaClient();
 
-// --- AÑADIR ESTA FUNCIÓN ---
 async function getUserFromToken(req: Request) {
   const auth = req.headers.get("authorization");
   if (!auth) return null;
@@ -16,48 +15,52 @@ async function getUserFromToken(req: Request) {
     return null;
   }
 }
-// -------------------------
 
-// GET → Listar todos los comunicados (CORREGIDO)
-export async function GET(req: Request) { // <--- Añadir req
-  const user = await getUserFromToken(req); // <--- Añadir autenticación
+// GET → Listar comunicados (Protegido)
+export async function GET(req: Request) {
+  const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const comunicados = await prisma.comunicado.findMany({
-    include: { autor: true },
+    include: { autor: { select: { nombre: true } } },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(comunicados);
 }
 
-// POST → Crear un comunicado (CORREGIDO)
+// POST → Crear comunicado (Protegido: Solo ADMIN, SUBDIRECCION, DIRECCION)
 export async function POST(req: Request) {
-  // 1. OBTENER USUARIO DEL TOKEN
+  // 1. Autenticar
   const user = await getUserFromToken(req);
   if (!user) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-  // 2. VERIFICAR ROL DEL TOKEN
-  if (user.rol !== "ADMIN" && user.rol !== "SUBDIRECCION" && user.rol !== "DIRECCION") {
+  // 2. Validar Rol
+  const rolesPermitidos = ["ADMIN", "SUBDIRECCION", "DIRECCION"];
+  if (!rolesPermitidos.includes(user.rol)) {
     return NextResponse.json(
       { error: "No tienes permisos para crear comunicados" },
       { status: 403 }
     );
   }
 
-  // 3. Obtener datos del body (SIN rol NI autorId)
+  // 3. Crear (Usando ID del token)
   const { titulo, contenido } = await req.json();
 
   if (!titulo || !contenido) {
       return NextResponse.json({ error: "Título y contenido son obligatorios" }, { status: 400 });
   }
 
-  const nuevo = await prisma.comunicado.create({
-    data: { 
-        titulo, 
-        contenido, 
-        autorId: user.id // 4. USAR ID DEL TOKEN
-    },
-  });
-
-  return NextResponse.json(nuevo, { status: 201 });
+  try {
+      const nuevo = await prisma.comunicado.create({
+        data: { 
+            titulo, 
+            contenido, 
+            autorId: user.id // El autor es el usuario logueado
+        },
+      });
+      return NextResponse.json(nuevo, { status: 201 });
+  } catch (error) {
+      console.error("Error creando comunicado:", error);
+      return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  }
 }
