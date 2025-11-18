@@ -25,6 +25,8 @@ model Usuario {
   jefeId             Int?
   jefe               Usuario?       @relation("JefeSubordinados", fields: [jefeId], references: [id])
   subordinados       Usuario[]      @relation("JefeSubordinados")
+  diasVacaciones     Int            @default(15)   // Saldo inicial estándar
+  diasAdministrativos Int           @default(6)    // Saldo inicial estándar
   documentos         Documento[]
   comunicados        Comunicado[]
   solicitudes        Solicitud[]
