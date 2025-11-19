@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { getRol, getToken } from '@/lib/auth';
 import { API_URL, Role } from '@/lib/constants';
 import { Solicitud, SolicitudTipo } from '@/lib/types'; 
+import { generateSolicitudPDF } from '@/lib/pdfGenerator';
 
 // Componentes reutilizables con Tipado Limpio (Mantenidos fuera del componente principal)
 interface CardProps { children: React.ReactNode }
@@ -74,13 +75,13 @@ const ApproverActions = ({ solicitud, userRol, handleApproveReject }: Omit<Solic
 const SolicitudRow = ({ solicitud, isApprover, userRol, handleApproveReject }: Readonly<SolicitudRowProps>) => {
     const isOwn = !isApprover; 
     
-    const statusMap = {
+    const statusMap: Record<string, string> = { // Añadido tipo Record para evitar error TS
         'PENDIENTE': 'bg-yellow-100 text-yellow-800',
         'APROBADO': 'bg-green-100 text-green-800',
         'RECHAZADO': 'bg-red-100 text-red-800',
         'CANCELADO': 'bg-gray-100 text-gray-800',
     };
-    const statusClass = statusMap[solicitud.estado];
+    const statusClass = statusMap[solicitud.estado] || 'bg-gray-100 text-gray-800';
         
     return (
         <li className="p-4 border-b last:border-b-0 flex justify-between items-center hover:bg-gray-50">
@@ -91,28 +92,32 @@ const SolicitudRow = ({ solicitud, isApprover, userRol, handleApproveReject }: R
                 <p className="text-sm text-gray-600">
                     {new Date(solicitud.fechaInicio).toLocaleDateString()} al {new Date(solicitud.fechaFin).toLocaleDateString()}
                 </p>
-                {isApprover && (
-                    <p className="text-xs text-gray-500">Motivo: {solicitud.motivo || 'N/A'}</p>
+                {isApprover && solicitud.motivo && (
+                    <p className="text-xs text-gray-500">Motivo: {solicitud.motivo}</p>
                 )}
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-1 inline-block ${statusClass}`}>
                     {solicitud.estado}
                 </span>
             </div>
-            {isApprover && <ApproverActions 
-                solicitud={solicitud} 
-                userRol={userRol} 
-                handleApproveReject={handleApproveReject}
-            />}
-            {isOwn && solicitud.pdfUrl && ( 
-                <a 
-                    href={solicitud.pdfUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:text-blue-700 font-medium text-sm"
-                >
-                    Descargar PDF
-                </a>
-            )}
+            
+            <div className="flex items-center gap-2">
+                {/* Acciones de Aprobador */}
+                {isApprover && <ApproverActions 
+                    solicitud={solicitud} 
+                    userRol={userRol} 
+                    handleApproveReject={handleApproveReject}
+                />}
+
+                {/* Botón PDF (Visible si es dueño y está APROBADO) */}
+                {isOwn && solicitud.estado === 'APROBADO' && ( 
+                    <button 
+                        onClick={() => generateSolicitudPDF(solicitud)}
+                        className="text-blue-600 hover:text-blue-800 font-medium text-sm flex items-center border border-blue-200 px-3 py-1 rounded hover:bg-blue-50 transition"
+                    >
+                        📄 Descargar PDF
+                    </button>
+                )}
+            </div>
         </li>
     );
 };
@@ -325,4 +330,5 @@ export default function SolicitudesPage() {
             </Card>
         </div>
     );
+
 }

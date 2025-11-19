@@ -37,6 +37,7 @@ export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
+    const [today, setToday] = useState<Date | null>(null);
 
     // Feriados Backup
     const FERIADOS_BACKUP: FeriadoNacional[] = [
@@ -50,6 +51,7 @@ export default function DashboardPage() {
     ];
 
     useEffect(() => {
+        setToday(new Date());
         const fetchData = async () => {
             setLoading(true);
             setError(null);
@@ -138,7 +140,7 @@ export default function DashboardPage() {
                     <p className="text-gray-600">Bienvenido a la Intranet.</p>
                 </div>
                 <div className="text-sm text-gray-500 font-medium hidden md:block">
-                    {format(new Date(), "EEEE d 'de' MMMM", { locale: es })}
+                    {today ? format(today, "EEEE d 'de' MMMM", { locale: es }) : ''} {/* <--- USAMOS 'today' */}
                 </div>
             </header>
 
