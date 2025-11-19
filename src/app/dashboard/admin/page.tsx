@@ -6,9 +6,15 @@ import { API_URL, Role } from '@/lib/constants';
 import { Usuario } from '@/lib/types'; 
 import { useRouter } from 'next/navigation';
 
+// Extendemos la interfaz Usuario para incluir los días (si no están en types.ts aún)
+interface UsuarioAdmin extends Usuario {
+    diasVacaciones?: number;
+    diasAdministrativos?: number;
+}
+
 // Componentes reutilizables
-interface CardProps { children: React.ReactNode }
-const Card = ({ children }: Readonly<CardProps>) => <div className="bg-white p-6 rounded-lg shadow-md">{children}</div>;
+interface CardProps { children: React.ReactNode; className?: string }
+const Card = ({ children, className = '' }: CardProps) => <div className={`bg-white p-6 rounded-lg shadow-md ${className}`}>{children}</div>;
 
 interface ButtonProps { 
     children: React.ReactNode; 
@@ -28,242 +34,251 @@ const Button = ({ children, onClick, disabled, className = '', type = 'button' }
     </button>
 );
 
-// Definición de roles para el formulario
 const ROLES_OPTIONS = Object.values(Role).map(rol => ({ value: rol, label: rol }));
-
 
 export default function UserAdminPage() {
     const router = useRouter();
-    // Declaración de todos los Hooks al principio
     const [userRol, setUserRol] = useState<Role | null>(null);
     const [canAdmin, setCanAdmin] = useState(false);
-    const [users, setUsers] = useState<Usuario[]>([]);
+    const [users, setUsers] = useState<UsuarioAdmin[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    // Estados del formulario de creación
+    // Estado para el usuario que se está editando (null = modo creación)
+    const [editingUser, setEditingUser] = useState<UsuarioAdmin | null>(null);
+
+    // Formulario
     const [formData, setFormData] = useState({
         nombre: '', correo: '', password: '', rol: Role.FUNCIONARIO, rut: '', cargo: '', telefono: '',
+        diasVacaciones: 15, diasAdministrativos: 6
     });
     const [formError, setFormError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-
-    // --- Lógica de Carga de Usuarios ---
     const fetchUsers = async () => {
         setLoading(true);
         try {
             const response = await fetch(`${API_URL}/usuarios`, {
                 headers: { 'Authorization': `Bearer ${getToken()}` },
             });
-            if (!response.ok) throw new Error('Error al cargar la lista de usuarios');
-            const data: Usuario[] = await response.json();
+            if (!response.ok) throw new Error('Error al cargar usuarios');
+            const data: UsuarioAdmin[] = await response.json();
             setUsers(data);
             setError('');
         } catch (e) {
-            console.error("Error al obtener usuarios:", e);
-            setError('Error al conectar con la API de usuarios.');
+            console.error(e);
+            setError('Error de conexión.');
         } finally {
             setLoading(false);
         }
     };
 
-
-    // --- HOOK PRINCIPAL: Autenticación, Acceso y Carga de Datos (Estructura Corregida) ---
     useEffect(() => {
         const rol = getRol();
         setUserRol(rol);
-        // Roles permitidos para esta página: ADMIN y DIRECCION
-        const isAdmin = [Role.ADMIN, Role.DIRECCION].includes(rol as Role);
+        const isAdmin = [Role.ADMIN, Role.DIRECCION, Role.SUBDIRECCION].includes(rol as Role); // Subdirección también puede ver
         setCanAdmin(isAdmin);
 
-        // 1. Redirección si no tiene permisos (Lógica dentro del Hook)
-        if (!isAdmin && rol !== null) { // rol !== null asegura que ya verificó el token
-             // Ya que el layout verifica la sesión, esta redirección interna solo es por roles.
+        if (!isAdmin && rol !== null) {
              router.replace('/dashboard'); 
         } else if (isAdmin) {
-            // 2. Carga de datos si SÍ tiene permisos
             fetchUsers();
         }
     }, [router]);
     
-    // Si la sesión está siendo verificada, muestra un estado de carga
-    if (userRol === null && typeof window !== 'undefined') {
-        return (
-            <div className="text-gray-600 text-center mt-10">
-                Verificando permisos...
-            </div>
-        );
-    }
-    
-    // Si ya verificamos y NO es administrador, el router.replace ya se encarga.
+    if (userRol === null) return <div className="p-8 text-center">Verificando...</div>;
     if (!canAdmin) return null;
 
-
-    // --- Manejo de Formularios ---
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { id, value } = e.target;
         setFormData(prev => ({ ...prev, [id]: value }));
     };
 
-    const handleCreateUser = async (e: React.FormEvent) => {
+    // Cargar datos en el formulario para editar
+    const handleEditClick = (user: UsuarioAdmin) => {
+        setEditingUser(user);
+        setFormData({
+            nombre: user.nombre,
+            correo: user.correo,
+            password: '', // No mostramos la contraseña
+            rol: user.rol,
+            rut: user.rut,
+            cargo: user.cargo || '',
+            telefono: user.telefono || '',
+            diasVacaciones: user.diasVacaciones ?? 15,
+            diasAdministrativos: user.diasAdministrativos ?? 6
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' }); // Subir al formulario
+    };
+
+    const handleCancelEdit = () => {
+        setEditingUser(null);
+        setFormData({ nombre: '', correo: '', password: '', rol: Role.FUNCIONARIO, rut: '', cargo: '', telefono: '', diasVacaciones: 15, diasAdministrativos: 6 });
+        setFormError('');
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setFormError('');
-
-        if (!formData.nombre || !formData.correo || !formData.password || !formData.rol || !formData.rut) {
-            setFormError('Rellena todos los campos obligatorios (nombre, correo, contraseña, rol, rut).');
-            return;
-        }
-
         setIsSubmitting(true);
+
         try {
-            const response = await fetch(`${API_URL}/usuarios`, {
-                method: 'POST',
+            const url = editingUser 
+                ? `${API_URL}/usuarios/${editingUser.id}` 
+                : `${API_URL}/usuarios`;
+            
+            const method = editingUser ? 'PUT' : 'POST';
+
+            // Si editamos y no se puso password, la quitamos del body para no enviarla vacía
+            const bodyData: any = { ...formData };
+            if (editingUser && !bodyData.password) {
+                delete bodyData.password;
+            }
+
+            const response = await fetch(url, {
+                method: method,
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${getToken()}` },
-                body: JSON.stringify(formData),
+                body: JSON.stringify(bodyData),
             });
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Error al crear el usuario.');
+                throw new Error(errorData.error || 'Error en la operación.');
             }
 
-            alert('✅ Usuario creado con éxito.');
-            setFormData({ nombre: '', correo: '', password: '', rol: Role.FUNCIONARIO, rut: '', cargo: '', telefono: '' });
-            fetchUsers();
-        } catch (error) {
-             if (error instanceof Error) {
-                setFormError(error.message);
-            } else {
-                 setFormError("Error desconocido al crear usuario.");
-            }
+            alert(`Usuario ${editingUser ? 'actualizado' : 'creado'} con éxito.`);
+            handleCancelEdit(); // Limpiar y salir de edición
+            fetchUsers(); // Recargar lista
+        } catch (error: any) {
+             setFormError(error.message || "Error desconocido.");
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    // --- Manejo de Eliminación ---
     const handleDelete = async (userId: number, userName: string) => {
-        if (!confirm(`¿Está seguro de eliminar al usuario ${userName}? Esta acción es irreversible.`)) return;
-
+        if (!confirm(`¿Desactivar al usuario ${userName}?`)) return;
         try {
             const response = await fetch(`${API_URL}/usuarios/${userId}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${getToken()}` },
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Error al eliminar el usuario.');
-            }
-
-            alert(`✅ Usuario ${userName} eliminado.`);
+            if (!response.ok) throw new Error('Error al eliminar.');
+            alert(`Usuario desactivado.`);
             fetchUsers();
-        } catch (error) {
-            if (error instanceof Error) {
-                alert(error.message);
-            } else {
-                alert("Error desconocido al eliminar usuario.");
-            }
+        } catch (error: any) {
+            alert(error.message);
         }
     };
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800">⚙️ Administración de Usuarios (CRUD)</h1>
-            <p className="text-gray-600">
-                Gestión de funcionarios, roles y datos de contacto.
-            </p>
+            <h1 className="text-3xl font-bold text-gray-800">⚙️ Administración de Usuarios</h1>
+            <p className="text-gray-600">Gestión de funcionarios, roles y saldos de días.</p>
 
-            {/* Formulario de Creación */}
-            <Card>
-                <h2 className="text-xl font-semibold mb-4 text-gray-700">Crear Nuevo Usuario</h2>
-                <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Fila 1 */}
+            {/* Formulario de Creación / Edición */}
+            <Card className={editingUser ? "border-2 border-blue-400" : ""}>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold text-gray-700">
+                        {editingUser ? `Editar Usuario: ${editingUser.nombre}` : 'Registrar Nuevo Usuario'}
+                    </h2>
+                    {editingUser && (
+                        <button onClick={handleCancelEdit} className="text-sm text-red-500 hover:underline">
+                            Cancelar Edición
+                        </button>
+                    )}
+                </div>
+                
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Datos Personales */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700" htmlFor="nombre">Nombre</label>
+                        <label className="block text-sm font-medium text-gray-700">Nombre</label>
                         <input id="nombre" type="text" value={formData.nombre} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700" htmlFor="correo">Correo</label>
-                        <input id="correo" type="email" value={formData.correo} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700" htmlFor="rut">RUT</label>
+                        <label className="block text-sm font-medium text-gray-700">RUT</label>
                         <input id="rut" type="text" value={formData.rut} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
                     </div>
-                    
-                    {/* Fila 2 */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700" htmlFor="password">Contraseña</label>
-                        <input id="password" type="password" value={formData.password} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
+                        <label className="block text-sm font-medium text-gray-700">Correo</label>
+                        <input id="correo" type="email" value={formData.correo} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
                     </div>
+                    
+                    {/* Rol y Cargo */}
                     <div>
-                        <label className="block text-sm font-medium text-gray-700" htmlFor="rol">Rol</label>
+                        <label className="block text-sm font-medium text-gray-700">Rol</label>
                         <select id="rol" value={formData.rol} onChange={handleInputChange} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border">
-                            {ROLES_OPTIONS.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
+                            {ROLES_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700" htmlFor="cargo">Cargo</label>
+                        <label className="block text-sm font-medium text-gray-700">Cargo</label>
                         <input id="cargo" type="text" value={formData.cargo} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
                     </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-700">Contraseña {editingUser && '(Dejar en blanco para no cambiar)'}</label>
+                        <input id="password" type="password" value={formData.password} onChange={handleInputChange} required={!editingUser} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border" />
+                    </div>
 
-                    {/* Fila 3 - Botón */}
-                    <div className="md:col-span-3 pt-2">
+                    {/* Gestión de Días (NUEVO) */}
+                    <div className="md:col-span-3 border-t pt-4 mt-2">
+                        <h3 className="text-sm font-bold text-gray-500 mb-3 uppercase">Saldo de Días Disponibles</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-green-700">Días Vacaciones</label>
+                                <input id="diasVacaciones" type="number" value={formData.diasVacaciones} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-green-300 shadow-sm p-2 border bg-green-50" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-blue-700">Días Administrativos</label>
+                                <input id="diasAdministrativos" type="number" value={formData.diasAdministrativos} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-blue-300 shadow-sm p-2 border bg-blue-50" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="md:col-span-3 pt-4">
                         {formError && <p className="text-red-500 text-sm mb-2">{formError}</p>}
                         <Button type="submit" disabled={isSubmitting} className="w-full">
-                            {isSubmitting ? 'Guardando...' : 'Registrar Nuevo Funcionario'}
+                            {isSubmitting ? 'Guardando...' : (editingUser ? 'Guardar Cambios' : 'Crear Usuario')}
                         </Button>
                     </div>
                 </form>
             </Card>
 
-            {/* Listado de Usuarios */}
+            {/* Listado */}
             <Card>
                 <h2 className="text-xl font-semibold mb-4 text-gray-700">Listado de Funcionarios</h2>
-                
-                {loading ? (
-                    <p>Cargando usuarios...</p>
-                ) : error ? (
-                    <p className="text-red-500">{error}</p>
-                ) : (
+                {loading ? <p>Cargando...</p> : error ? <p className="text-red-500">{error}</p> : (
                     <div className="overflow-x-auto">
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gray-50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nombre</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Correo / RUT</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rol / Cargo</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Funcionario</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Saldo Días</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {users.map((user) => (
-                                    <tr key={user.id}>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{user.nombre}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                            {user.correo}<br/>
-                                            <span className="text-xs text-gray-400">RUT: {user.rut}</span>
+                                    <tr key={user.id} className={editingUser?.id === user.id ? "bg-blue-50" : ""}>
+                                        <td className="px-6 py-4">
+                                            <p className="text-sm font-medium text-gray-900">{user.nombre}</p>
+                                            <p className="text-xs text-gray-500">{user.cargo} - {user.rol}</p>
+                                            <p className="text-xs text-gray-400">{user.rut}</p>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                                user.rol === Role.DIRECCION || user.rol === Role.ADMIN ? 'bg-red-100 text-red-800' :
-                                                user.rol === Role.JEFE ? 'bg-yellow-100 text-yellow-800' :
-                                                'bg-blue-100 text-blue-800'
-                                            }`}>
-                                                {user.rol}
-                                            </span><br/>
-                                            <span className="text-xs text-gray-500">{user.cargo}</span>
+                                        <td className="px-6 py-4">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 mr-2">
+                                                Vac: {user.diasVacaciones ?? 0}
+                                            </span>
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                Adm: {user.diasAdministrativos ?? 0}
+                                            </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                            <button onClick={() => alert(`Abrir edición de ID: ${user.id}`)} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                                        <td className="px-6 py-4 text-sm font-medium">
+                                            <button onClick={() => handleEditClick(user)} className="text-indigo-600 hover:text-indigo-900 mr-4">
                                                 Editar
                                             </button>
                                             <button onClick={() => handleDelete(user.id, user.nombre)} className="text-red-600 hover:text-red-900">
-                                                Eliminar
+                                                Desactivar
                                             </button>
                                         </td>
                                     </tr>
