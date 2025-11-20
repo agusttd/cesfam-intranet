@@ -6,19 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate" 
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.84.0",
-    "@types/react-calendar": "^4.1.0",
+    "@supabase/supabase-js": "^2.58.0",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
     "date-fns": "^4.1.0",
     "jsonwebtoken": "^9.0.2",
-    "jspdf": "^3.0.3",
+    "jspdf": "^2.5.2",
     "next": "15.5.4",
     "react": "19.1.0",
-    "react-calendar": "^6.0.0",
+    "react-calendar": "^5.1.0",
     "react-dom": "19.1.0"
   },
   "devDependencies": {
