@@ -90,3 +90,17 @@ body {
 .highlight-feriado {
   @apply bg-red-100 rounded-full font-bold text-red-700;
 }
+
+/* --- Corrección de Visibilidad de Textos en Inputs --- */
+input, select, textarea {
+  @apply text-gray-900; /* Texto oscuro (casi negro) */
+}
+
+/* Color del Placeholder (el texto de ayuda "Buscar...") */
+::placeholder {
+  @apply text-gray-500 opacity-100; /* Gris medio, totalmente opaco */
+}
+
+.text-gray-400 {
+    color: #9ca3af; /* gris visible */
+}

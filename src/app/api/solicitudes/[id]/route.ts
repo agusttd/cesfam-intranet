@@ -24,36 +24,74 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     const { accion } = await req.json(); // "aprobar" o "rechazar"
     const solicitudId = parseInt(params.id);
 
-    const solicitud = await prisma.solicitud.findUnique({ where: { id: solicitudId } });
+    // Incluimos al solicitante para saber a quién descontarle los días
+    const solicitud = await prisma.solicitud.findUnique({ 
+        where: { id: solicitudId },
+        include: { solicitante: true } 
+    });
+
     if (!solicitud) return NextResponse.json({ error: "No existe la solicitud" }, { status: 404 });
 
     let updateData: Prisma.SolicitudUpdateInput = {};
     const ahora = new Date();
 
     if (user.rol === "JEFE") {
-      updateData = {
-        estado: accion === "aprobar" ? "PENDIENTE" : "RECHAZADO",
-        jefeAprobador: { connect: { id: user.id } },
-        jefeAprobadoAt: ahora,
-      };
-    } else if (user.rol === "DIRECCION") {
-      updateData = {
-        estado: accion === "aprobar" ? "APROBADO" : "RECHAZADO",
-        direccionAprobador: { connect: { id: user.id } },
-        direccionAprobadoAt: ahora,
-      };
-    } else {
-      return NextResponse.json({ error: "No autorizado para aprobar" }, { status: 403 });
-    }
+      // El Jefe solo pasa el estado a "PENDIENTE" (para que lo vea Dirección) o lo RECHAZA
+      // (A menos que la lógica sea que Jefe aprueba final, pero asumimos flujo de 2 pasos)
+      updateData = {
+        estado: accion === "aprobar" ? "PENDIENTE" : "RECHAZADO", // Sigue pendiente hasta que Dir. apruebe
+        jefeAprobador: { connect: { id: user.id } },
+        jefeAprobadoAt: ahora,
+      };
+    } else if (user.rol === "DIRECCION" || user.rol === "SUBDIRECCION") {
+      // Dirección da el veredicto final
+      updateData = {
+        estado: accion === "aprobar" ? "APROBADO" : "RECHAZADO",
+        direccionAprobador: { connect: { id: user.id } },
+        direccionAprobadoAt: ahora,
+      };
 
-    const actualizada = await prisma.solicitud.update({
-      where: { id: solicitudId },
-      data: updateData,
-    });
+      // --- LÓGICA DE DESCUENTO DE DÍAS ---
+      if (accion === "aprobar" && solicitud.estado !== "APROBADO") {
+          // Calcular días (aproximado)
+          const diffTime = Math.abs(solicitud.fechaFin.getTime() - solicitud.fechaInicio.getTime());
+          // +1 porque si pido del 1 al 1, es 1 día
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
 
-    return NextResponse.json(actualizada);
-  } catch (error) {
-    console.error("Error aprobando solicitud:", error);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
-  }
+          if (solicitud.tipo === "VACACIONES") {
+              if (solicitud.solicitante.diasVacaciones < diffDays) {
+                   return NextResponse.json({ error: "El funcionario no tiene suficientes días de vacaciones." }, { status: 400 });
+              }
+              // Descontar
+              await prisma.usuario.update({
+                  where: { id: solicitud.solicitanteId },
+                  data: { diasVacaciones: { decrement: diffDays } }
+              });
+          } else if (solicitud.tipo === "ADMINISTRATIVO") {
+              if (solicitud.solicitante.diasAdministrativos < diffDays) {
+                   return NextResponse.json({ error: "El funcionario no tiene suficientes días administrativos." }, { status: 400 });
+              }
+              // Descontar
+              await prisma.usuario.update({
+                  where: { id: solicitud.solicitanteId },
+                  data: { diasAdministrativos: { decrement: diffDays } }
+              });
+          }
+      }
+      // -----------------------------------
+
+    } else {
+      return NextResponse.json({ error: "No autorizado para aprobar" }, { status: 403 });
+    }
+
+    const actualizada = await prisma.solicitud.update({
+      where: { id: solicitudId },
+      data: updateData,
+    });
+
+    return NextResponse.json(actualizada);
+  } catch (error) {
+    console.error("Error aprobando solicitud:", error);
+    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  }
 }
