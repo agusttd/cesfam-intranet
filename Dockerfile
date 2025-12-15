@@ -29,4 +29,4 @@ EXPOSE 8080
 
 # COMANDO FINAL: Usamos npm start para asegurar que ejecute tu script
 # Tu script en package.json ya tiene "-p $PORT -H 0.0.0.0", así que esto funcionará perfecto.
-CMD ["npm", "start"]
+CMD ["node", ".next/standalone/server.js"]
