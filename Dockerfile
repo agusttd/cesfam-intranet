@@ -1,38 +1,32 @@
+# Usamos una imagen de Node ligera
 FROM node:20-alpine
 
+# Directorio de trabajo
 WORKDIR /app
 
-# 1. Instalar dependencias del sistema necesarias para Prisma/Next
+# Instalar dependencias necesarias para Prisma en Alpine Linux
 RUN apk add --no-cache libc6-compat openssl
 
-# 2. Copiar archivos de configuración de dependencias
+# Copiar archivos de dependencias
 COPY package.json package-lock.json ./
-# Copiar la carpeta prisma antes de instalar para que 'prisma generate' funcione
+
+# Copiar la carpeta de Prisma (VITAL para que funcione el postinstall)
 COPY prisma ./prisma/
 
-# 3. Instalar TODAS las dependencias (necesarias para el build)
+# Instalar dependencias (usamos npm ci para instalación limpia)
 RUN npm ci
 
-# 4. Copiar el resto del código fuente
+# Copiar el resto del código
 COPY . .
 
-# 5. Construir la aplicación
-ENV NEXT_TELEMETRY_DISABLED 1
-# Por seguridad, desactivamos el linting aquí también
+# Construir la aplicación Next.js
+# Desactivamos el linting aquí también para asegurar que construya
 ENV NEXT_LINT=false
 RUN npm run build
 
-# 6. Mover archivos estáticos al lugar correcto (Vital para modo standalone)
-# Esto arregla que las imágenes o estilos no carguen
-RUN cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static
-
-# 7. Configurar variables de entorno para producción
-ENV PORT 8080
-ENV HOSTNAME "0.0.0.0"
-ENV NODE_ENV production
-
-# 8. Exponer el puerto
+# Exponer el puerto 8080 (El que usa Railway)
 EXPOSE 8080
 
-# 9. Comando de arranque BLINDADO
-CMD ["node", ".next/standalone/server.js"]
+# COMANDO FINAL: Usamos npm start para asegurar que ejecute tu script
+# Tu script en package.json ya tiene "-p $PORT -H 0.0.0.0", así que esto funcionará perfecto.
+CMD ["npm", "start"]
