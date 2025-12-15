@@ -151,7 +151,7 @@ export default function DashboardPage() {
         <div className="p-6 md:p-8 space-y-8">
             <header className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-800">Hola, {user.nombre} 👋</h1>
+                    <h1 className="text-3xl font-bold text-gray-800">Hola, {user.nombre} </h1>
                     <p className="text-gray-600">Bienvenido a la Intranet.</p>
                 </div>
                 <div className="text-sm text-gray-500 font-medium hidden md:block">
@@ -190,7 +190,7 @@ export default function DashboardPage() {
                 {/* COLUMNA CENTRAL Y DERECHA */}
                 <div className="space-y-8 lg:col-span-2">
                     
-                    {/* WIDGET CALENDARIO (El que pediste) */}
+                    {/* WIDGET CALENDARIO */}
                     <Card>
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="text-lg font-semibold text-gray-700">📅 Agenda Semanal</h2>

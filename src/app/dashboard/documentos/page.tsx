@@ -148,7 +148,7 @@ export default function DocumentosPage() {
     return (
         <div className="space-y-8 max-w-5xl mx-auto">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold text-gray-800">📚 Repositorio de Documentos</h1>
+                <h1 className="text-3xl font-bold text-gray-800">Repositorio de Documentos</h1>
             </div>
 
             {/* Buscador */}

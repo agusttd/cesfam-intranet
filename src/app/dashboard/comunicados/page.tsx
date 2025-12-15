@@ -84,7 +84,7 @@ export default function ComunicadosPage() {
         setIsSubmitting(true);
         try {
             // Llama a la ruta POST /api/comunicados
-            // NOTA: Tu API backend (route.ts) debe ser capaz de extraer el autorId 
+            // NOTA: API backend (route.ts) debe ser capaz de extraer el autorId 
             // y el rol del JWT para esta solicitud, por seguridad.
             const response = await fetch(`${API_URL}/comunicados`, {
                 method: 'POST',
@@ -143,7 +143,7 @@ export default function ComunicadosPage() {
     
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800">📢 Muro de Comunicados Oficiales (HU-07, HU-08)</h1>
+            <h1 className="text-3xl font-bold text-gray-800"> Muro de Comunicados Oficiales </h1>
 
             {/* Formulario de Publicación */}
             {canPublish && (

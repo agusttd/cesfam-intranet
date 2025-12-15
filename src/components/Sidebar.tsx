@@ -136,7 +136,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Panel General",
     icon: HomeIcon,
     roles: Object.values(Role) as Role[],
   },

@@ -122,7 +122,7 @@ export default function LicenciasPage() {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold text-gray-800">📋 Gestión de Licencias Médicas</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Gestión de Licencias Médicas</h1>
             <p className="text-gray-600">
                 Funcionalidad exclusiva para la Subdirección. Registrar licencias y ver reportes.
             </p>

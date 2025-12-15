@@ -64,7 +64,7 @@ export default function CalendarioPage() {
     return (
         <div className="space-y-8 max-w-7xl mx-auto p-4">
             <div className="flex justify-between items-center">
-                <div><h1 className="text-3xl font-bold text-gray-800">📅 Calendario Institucional</h1><p className="text-gray-600">Actividades, feriados y reuniones.</p></div>
+                <div><h1 className="text-3xl font-bold text-gray-800">Calendario Institucional</h1><p className="text-gray-600">Actividades, feriados y reuniones.</p></div>
                 {canCreate && <Button onClick={() => alert('Abrir Modal Crear Evento')}>+ Nuevo Evento</Button>}
             </div>
 
