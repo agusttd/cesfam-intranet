@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from '@/lib/prisma'; // Importamos nuestro archivo maestro
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
 
 // Función para verificar token y devolver usuario (Reutilizada)
 async function getUserFromToken(req: Request) {

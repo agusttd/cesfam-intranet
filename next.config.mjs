@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone', 
   typescript: {
-    // Ignora los errores de tipos de TypeScript durante el build
     ignoreBuildErrors: true,
   },
 };

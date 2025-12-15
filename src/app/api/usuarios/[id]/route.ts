@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { PrismaClient, Prisma } from "@prisma/client";
+import { prisma } from '@/lib/prisma'; 
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
 
 async function getUserFromToken(req: Request) {
   const auth = req.headers.get("authorization");
